@@ -5,6 +5,7 @@ import { ListPagesUseCase } from "../../use-cases/list-pages.use-case.js";
 import { ViewPageUseCase } from "../../use-cases/view-page.use-case.js";
 import { DeletePageUseCase } from "../../use-cases/delete-page.use-case.js";
 import { repositories } from "../repositories/index.js";
+import { CheckPagesUseCase } from "../../use-cases/check-pages.use-case.js";
 
 /**
  * Use Cases с внедрёнными зависимостями
@@ -43,6 +44,11 @@ export const useCases = {
    * Use case для удаления страницы
    */
   deletePage: new DeletePageUseCase(repositories.page),
+
+  /**
+   *
+   */
+  checkPages: new CheckPagesUseCase(repositories.page),
 
   // Для добавления новых use cases:
   // help: new HelpUseCase(repositories.user),

@@ -138,4 +138,18 @@ export class PageRepository {
       ...row,
     }));
   }
+
+  /**
+   * Найти страницы, у которых пришло время проверки
+   */
+  findPagesNeedingCheck(now: number): Page[] {
+    const stmt = this.database.prepare(
+      "SELECT * FROM pages WHERE check_time <= ? ORDER BY check_time ASC",
+    );
+    const rows = stmt.all(now) as any[];
+
+    return rows.map((row) => ({
+      ...row,
+    }));
+  }
 }

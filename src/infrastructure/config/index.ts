@@ -23,8 +23,11 @@ const envSchema = z.object({
   // Логирование
   LOG_LEVEL: z.enum(["error", "warn", "info", "debug"]).default("info"),
 
-  //
-  CHECK_MINUTES_RANGE: z.coerce.number().min(5).default(15),
+  // Интервал проверки Pages
+  CHECK_MINUTES_INTERVAL: z.coerce.number().min(5).default(15),
+
+  // Интервал запуска задач планировщика
+  SCHEDULER_INTERVAL: z.coerce.number().min(5).default(120),
 });
 
 // 3. Валидируем данные из process.env
