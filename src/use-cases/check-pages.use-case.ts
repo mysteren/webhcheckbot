@@ -1,6 +1,7 @@
 import { PageRepository } from "../repositories/page.repository.js";
 import type { Page } from "../entities/page.entity.js";
 import { Config } from "../infrastructure/config/index.js";
+import type { INotificationService } from "../shared/interfaces/notification.interface.js";
 
 export interface CheckPagesResult {
   totalChecked: number;
@@ -18,13 +19,19 @@ export class CheckPagesUseCase {
   /**
    * Проверяет все страницы, у которых пришло время
    */
-  async run(signal?: AbortSignal): Promise<CheckPagesResult> {
+  async run(
+    notificationService: INotificationService,
+    signal: AbortSignal,
+  ): Promise<CheckPagesResult> {
     const result: CheckPagesResult = {
       totalChecked: 0,
       successful: 0,
       failed: 0,
       details: [],
     };
+
+    // массив результатов
+    const checkResults: Array<{ page: Page; status: string }> = [];
 
     try {
       const now = Date.now();
@@ -53,6 +60,7 @@ export class CheckPagesUseCase {
             url: page.url,
             status,
           });
+          checkResults.push({ page, status });
         } catch (error) {
           result.failed++;
           console.error(
@@ -60,6 +68,11 @@ export class CheckPagesUseCase {
             error,
           );
         }
+      }
+
+      // Отправляем отчеты пользователям
+      if (notificationService && checkResults.length > 0) {
+        await this.sendReportsToUsers(checkResults, notificationService);
       }
 
       console.log(
@@ -73,9 +86,46 @@ export class CheckPagesUseCase {
   }
 
   /**
+   * Группирует результаты по пользователям и отправляет отчеты
+   */
+  private async sendReportsToUsers(
+    checkResults: Array<{ page: Page; status: string }>,
+    notificationService: INotificationService,
+  ): Promise<void> {
+    // Группируем по user_id
+    const resultsByUser = new Map<
+      number,
+      Array<{ page: Page; status: string }>
+    >();
+
+    for (const result of checkResults) {
+      const userId = result.page.user_id;
+      if (!resultsByUser.has(userId)) {
+        resultsByUser.set(userId, []);
+      }
+      resultsByUser.get(userId)!.push(result);
+    }
+
+    // Отправляем отчет каждому пользователю
+    for (const [userId, pages] of resultsByUser.entries()) {
+      try {
+        await notificationService.sendCheckReport(userId, pages);
+        console.log(
+          `[CheckPagesUseCase] Отчет отправлен пользователю ${userId}`,
+        );
+      } catch (error) {
+        console.error(
+          `[CheckPagesUseCase] Ошибка отправки отчета пользователю ${userId}:`,
+          error,
+        );
+      }
+    }
+  }
+
+  /**
    * Проверяет одну страницу
    */
-  private async checkPage(page: Page, signal?: AbortSignal): Promise<string> {
+  private async checkPage(page: Page, signal: AbortSignal): Promise<string> {
     console.log(`[PagesCheckUseCase] Проверка страницы: ${page.url}`);
 
     let lastStatus: string;
@@ -90,7 +140,7 @@ export class CheckPagesUseCase {
           "User-Agent":
             "WebHCheckBot/1.0 (+https://github.com/mysteren/webhcheckbot)",
         },
-        signal: signal ?? null,
+        signal,
       });
 
       // 4. Проверяем код ответа

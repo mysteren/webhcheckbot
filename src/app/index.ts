@@ -1,12 +1,17 @@
-import { bot } from "../adapters/bot/index.js";
-import { RunSystemTasks } from "../adapters/system/index.js";
+import { InitBot } from "../adapters/bot/index.js";
+import { NotificationAdapter } from "../adapters/bot/notification.js";
+import { RunSystemTasks, SystemTaskInit } from "../adapters/system/index.js";
 import { Config } from "../infrastructure/config/index.js";
 import { Scheduler } from "../infrastructure/scheduler/index.js";
 
 // Функция запуска
 const run = async () => {
   const schedulerInterval = Config.SCHEDULER_INTERVAL * 1000;
-  const scheduler = new Scheduler(RunSystemTasks, schedulerInterval);
+  const bot = InitBot(Config.BOT_TOKEN);
+  const notificationService = new NotificationAdapter(bot);
+  const systemTasks = SystemTaskInit(notificationService);
+  const scheduler = new Scheduler(systemTasks, schedulerInterval);
+
   try {
     console.log("Запускаем планировщика");
     scheduler.start();
