@@ -40,15 +40,11 @@ export class CheckPagesUseCase {
       const pagesToCheck = this.pageRepo.findPagesNeedingCheck(now);
       result.totalChecked = pagesToCheck.length;
 
-      console.log(
-        `[PagesCheckUseCase] Найдено страниц для проверки: ${pagesToCheck.length}`,
-      );
-
       // 2. Последовательно проверяем каждую страницу
       for (const page of pagesToCheck) {
         // Проверяем сигнал прерывания
         if (signal?.aborted) {
-          console.log("[PagesCheckUseCase] Прервано через AbortSignal");
+          console.warn("[PagesCheckUseCase] Прервано через AbortSignal");
           break;
         }
 
@@ -74,10 +70,6 @@ export class CheckPagesUseCase {
       if (notificationService && checkResults.length > 0) {
         await this.sendReportsToUsers(checkResults, notificationService);
       }
-
-      console.log(
-        `[PagesCheckUseCase] Проверка завершена. Успешно: ${result.successful}, Ошибок: ${result.failed}`,
-      );
     } catch (error) {
       console.error("[PagesCheckUseCase] Критическая ошибка:", error);
     }
@@ -86,7 +78,7 @@ export class CheckPagesUseCase {
   }
 
   /**
-   * Группирует результаты по пользователям и отправляет отчеты
+   * Группирует результаты по пользователям и отправляет отчеты только при ошибках
    */
   private async sendReportsToUsers(
     checkResults: Array<{ page: Page; status: string }>,
@@ -106,13 +98,17 @@ export class CheckPagesUseCase {
       resultsByUser.get(userId)!.push(result);
     }
 
-    // Отправляем отчет каждому пользователю
+    // Отправляем отчет каждому пользователю, только если есть ошибки
     for (const [userId, pages] of resultsByUser.entries()) {
+      // Проверяем, есть ли у пользователя страницы с ошибками (статус не "ok")
+      const hasErrors = pages.some((p) => p.status !== "ok");
+
+      if (!hasErrors) {
+        continue;
+      }
+
       try {
         await notificationService.sendCheckReport(userId, pages);
-        console.log(
-          `[CheckPagesUseCase] Отчет отправлен пользователю ${userId}`,
-        );
       } catch (error) {
         console.error(
           `[CheckPagesUseCase] Ошибка отправки отчета пользователю ${userId}:`,
@@ -126,51 +122,60 @@ export class CheckPagesUseCase {
    * Проверяет одну страницу
    */
   private async checkPage(page: Page, signal: AbortSignal): Promise<string> {
-    console.log(`[PagesCheckUseCase] Проверка страницы: ${page.url}`);
-
     let lastStatus: string;
     const nextCheckTime =
       Date.now() + Config.CHECK_MINUTES_INTERVAL * 60 * 1000;
 
     try {
       // 3. Выполняем HTTP запрос (signal для прерывания)
+      // Создаем AbortController для таймаута (15 секунд)
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        timeoutController.abort();
+      }, 15000);
+
+      // Объединяем сигналы для обработки и таймаута, и внешнего прерывания
+      const combinedSignal = signal
+        ? AbortSignal.any([signal, timeoutController.signal])
+        : timeoutController.signal;
+
       const response = await fetch(page.url, {
         method: "GET",
         headers: {
           "User-Agent":
             "WebHCheckBot/1.0 (+https://github.com/mysteren/webhcheckbot)",
         },
-        signal,
+        signal: combinedSignal,
       });
+
+      // Очищаем таймер после успешного ответа
+      clearTimeout(timeoutId);
 
       // 4. Проверяем код ответа
       if (response.status !== 200) {
         lastStatus = `error_${response.status}`;
-        console.log(`[PagesCheckUseCase] Статус ответа: ${response.status}`);
       } else {
         // 5. Проверяем find_value в содержимом
         const text = await response.text();
 
         if (text.includes(page.find_value)) {
           lastStatus = "ok";
-          console.log(
-            `[PagesCheckUseCase] Значение найдено: ${page.find_value}`,
-          );
         } else {
           lastStatus = "error_value_not_found";
-          console.log(
-            `[PagesCheckUseCase] Значение не найдено: ${page.find_value}`,
-          );
         }
       }
     } catch (error) {
       // Обработка ошибок сети или таймаута
       if (error instanceof Error && error.name === "AbortError") {
-        lastStatus = "aborted";
-        console.log(`[PagesCheckUseCase] Запрос прерван: ${page.url}`);
+        // Если прервано через внешний сигнал
+        if (signal?.aborted) {
+          lastStatus = "aborted";
+        } else {
+          // Прервано по таймауту
+          lastStatus = "error_timeout";
+        }
       } else {
         lastStatus = "error_network";
-        console.error(`[PagesCheckUseCase] Сетевая ошибка:`, error);
       }
     }
 
@@ -179,12 +184,6 @@ export class CheckPagesUseCase {
       last_status: lastStatus,
       check_time: nextCheckTime,
     });
-
-    console.log(
-      `[PagesCheckUseCase] Обновлено: ${page.url}, статус: ${lastStatus}, следующая проверка: ${new Date(
-        nextCheckTime,
-      ).toISOString()}`,
-    );
 
     return lastStatus;
   }

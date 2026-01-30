@@ -9,13 +9,11 @@ export class Scheduler {
   ) {}
 
   start(): void {
-    console.info(`[Scheduler] Запуск (интервал: ${this.intervalMs}ms)`);
     this.run();
     this.intervalId = setInterval(() => this.run(), this.intervalMs);
   }
 
   stop(): void {
-    console.info("[Scheduler] Остановка...");
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -45,7 +43,6 @@ export class Scheduler {
       ]);
 
       const duration = Date.now() - startTime;
-      console.log(`[Scheduler] Выполнено за ${duration}ms`);
     } catch (error) {
       if (error instanceof Error && error.message === "Timeout") {
         console.warn("[Scheduler] Таймаут - задача прервана");

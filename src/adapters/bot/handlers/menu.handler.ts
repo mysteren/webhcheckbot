@@ -33,7 +33,9 @@ export const menuHandlerFirst = async (ctx: Context) => {
   // Предположим, records - массив ваших записей
   if (records.length === 0) {
     await ctx.reply("Записей пока нет", {
-      reply_markup: new InlineKeyboard().text("◀️ Главное меню", "main"),
+      reply_markup: new InlineKeyboard()
+        .text("Создать запись", "create")
+        .text("◀️ Главное меню", "main"),
     });
     return;
   }

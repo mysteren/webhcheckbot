@@ -37,8 +37,7 @@ db.exec(`
     last_status TEXT NOT NULL,
     find_value TEXT NOT NULL,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    updated_at TEXT NOT NULL
   )
 `);
 
