@@ -42,7 +42,7 @@ export class Scheduler {
         this.timeout(timeLeft),
       ]);
 
-      const duration = Date.now() - startTime;
+      // const duration = Date.now() - startTime;
     } catch (error) {
       if (error instanceof Error && error.message === "Timeout") {
         console.warn("[Scheduler] Таймаут - задача прервана");

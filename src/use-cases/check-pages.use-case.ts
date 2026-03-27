@@ -122,60 +122,65 @@ export class CheckPagesUseCase {
    * Проверяет одну страницу
    */
   private async checkPage(page: Page, signal: AbortSignal): Promise<string> {
-    let lastStatus: string;
+    const maxAttempts = 3;
     const nextCheckTime =
       Date.now() + Config.CHECK_MINUTES_INTERVAL * 60 * 1000;
 
-    try {
-      // 3. Выполняем HTTP запрос (signal для прерывания)
-      // Создаем AbortController для таймаута (15 секунд)
-      const timeoutController = new AbortController();
-      const timeoutId = setTimeout(() => {
-        timeoutController.abort();
-      }, 15000);
+    let lastStatus: string = "";
 
-      // Объединяем сигналы для обработки и таймаута, и внешнего прерывания
-      const combinedSignal = signal
-        ? AbortSignal.any([signal, timeoutController.signal])
-        : timeoutController.signal;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        // 3. Выполняем HTTP запрос (signal для прерывания)
+        // Создаем AbortController для таймаута (15 секунд)
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => {
+          timeoutController.abort();
+        }, 20000);
 
-      const response = await fetch(page.url, {
-        method: "GET",
-        headers: {
-          "User-Agent":
-            "WebHCheckBot/1.0 (+https://github.com/mysteren/webhcheckbot)",
-        },
-        signal: combinedSignal,
-      });
+        // Объединяем сигналы для обработки и таймаута, и внешнего прерывания
+        const combinedSignal = signal
+          ? AbortSignal.any([signal, timeoutController.signal])
+          : timeoutController.signal;
 
-      // Очищаем таймер после успешного ответа
-      clearTimeout(timeoutId);
+        const response = await fetch(page.url, {
+          method: "GET",
+          headers: {
+            "User-Agent":
+              "WebHCheckBot/1.0 (+https://github.com/mysteren/webhcheckbot)",
+          },
+          signal: combinedSignal,
+        });
 
-      // 4. Проверяем код ответа
-      if (response.status !== 200) {
-        lastStatus = `error_${response.status}`;
-      } else {
-        // 5. Проверяем find_value в содержимом
-        const text = await response.text();
+        // Очищаем таймер после успешного ответа
+        clearTimeout(timeoutId);
 
-        if (text.includes(page.find_value)) {
-          lastStatus = "ok";
+        // 4. Проверяем код ответа
+        if (response.status !== 200) {
+          lastStatus = `error_${response.status}`;
         } else {
-          lastStatus = "error_value_not_found";
+          // 5. Проверяем find_value в содержимом
+          const text = await response.text();
+
+          if (text.includes(page.find_value)) {
+            lastStatus = "ok";
+            break;
+          } else {
+            lastStatus = "error_value_not_found";
+          }
         }
-      }
-    } catch (error) {
-      // Обработка ошибок сети или таймаута
-      if (error instanceof Error && error.name === "AbortError") {
-        // Если прервано через внешний сигнал
-        if (signal?.aborted) {
-          lastStatus = "aborted";
+      } catch (error) {
+        // Обработка ошибок сети или таймаута
+        if (error instanceof Error && error.name === "AbortError") {
+          // Если прервано через внешний сигнал
+          if (signal?.aborted) {
+            lastStatus = "aborted";
+          } else {
+            // Прервано по таймауту
+            lastStatus = "error_timeout";
+          }
         } else {
-          // Прервано по таймауту
-          lastStatus = "error_timeout";
+          lastStatus = "error_network";
         }
-      } else {
-        lastStatus = "error_network";
       }
     }
 
